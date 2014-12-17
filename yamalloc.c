@@ -39,6 +39,8 @@ intptr_t *heap_init();
 intptr_t *heap_extend(intptr_t size);
 
 intptr_t *block_join(intptr_t *block);
+void block_split(intptr_t *block, intptr_t size);
+intptr_t *block_find(intptr_t size);
 
 /* Function definitions */
 
@@ -48,7 +50,7 @@ void ya_print_blocks() {
     intptr_t block_size;
     for (block = heap_start; block < heap_end; block += block_size) {
         block_size = YA_SZ_BLOCK(block[-1]);
-        fprintf(stderr, "Block at %p  size = %ld  alloc = %d\n",
+        printf("Block at %p  size = %ld  alloc = %d\n",
                 block, block_size, YA_IS_ALLOC(block));
     }
 }
@@ -64,6 +66,8 @@ intptr_t *block_join_prev(intptr_t *block) {
     intptr_t size = prev_size + block_size;
     prev[-1] = size;
     block[block_size - 2] = size;
+    ya_debug("block_join_prev: joining %p:%ld and %p:%ld -> %p:%ld\n",
+            block, block_size, prev, prev_size, prev, size);
     return prev;
 }
 
@@ -77,6 +81,8 @@ intptr_t *block_join_next(intptr_t *block) {
     intptr_t size = next_size + block_size;
     block[-1] = size;
     next[next_size - 2] = size;
+    ya_debug("block_join_next: joining %p:%ld and %p:%ld -> %p:%ld\n",
+            block, block_size, next, next_size, block, size);
     return block;
 }
 
@@ -95,6 +101,19 @@ void block_split(intptr_t *block, intptr_t size) {
     block[old_size - 2] = old_size - size;
 }
 
+intptr_t *block_find(intptr_t size) {
+    intptr_t *block;
+    intptr_t block_size;
+    for (block = heap_start; block < heap_end; block += block_size) {
+        block_size = YA_SZ_BLOCK(block[-1]);
+        if (!YA_IS_ALLOC(block) && size <= block_size) {
+            return block;
+        }
+    }
+    // could not find block, extend heap
+    return heap_extend(size);
+}
+
 intptr_t *heap_init() {
     intptr_t size_w = YA_SZ_CHUNK / YA_SZ_WORD;
     void *ptr = sbrk(YA_SZ_WORD * (size_w + 2));
@@ -103,29 +122,30 @@ intptr_t *heap_init() {
         heap_end = NULL;
         return NULL;
     }
-    heap_start  = ptr;
-    heap_start += 2; // space for the first block[-1] + dword alignment
-    heap_end = heap_start + size_w;
+    heap_start     = ptr; // cast to intptr_t *
+    heap_start    += 2; // space for the first block[-1] + dword alignment
+    heap_end       = heap_start + size_w;
     heap_start[-1] = size_w;
     heap_end[-2]   = size_w;
+    ya_debug("heap_init: start = %p, end = %p, size_w = %ld\n",
+            heap_start, heap_end, size_w);
     return heap_start;
 }
 
 intptr_t *heap_extend(intptr_t size_w) {
-    fprintf(stderr, "heap_extend: old heap_start = %p, heap_end = %p\n",
-            heap_start, heap_end);
     intptr_t size = YA_ROUND(size_w * YA_SZ_WORD, YA_SZ_CHUNK);
     size_w = size / YA_SZ_WORD;
-    fprintf(stderr, "heap_extend: %ld bytes, %ld words\n", size, size_w);
+    ya_debug("heap_extend: size_w = %ld\n", size_w);
     void *ptr = sbrk(size);
     if (ptr == (void *) - 1) {
         return NULL;
     }
-    intptr_t *block = ptr; // == heap_end
-    heap_end = block + size_w;
-    block[-1]    = size_w;
-    heap_end[-2] = size_w;
-    fprintf(stderr, "heap_extend: new heap_end = %p\n", heap_end);
+    intptr_t *block = ptr; // == old heap_end
+    heap_end        = block + size_w;
+    block[-1]       = size_w;
+    heap_end[-2]    = size_w;
+    ya_debug("heap_extend: old end = %p, new end = %p, size_w = %ld\n",
+            block, heap_end, size_w);
     return block_join(ptr);
 }
 
@@ -139,24 +159,10 @@ void *malloc(size_t size) {
         }
     }
     intptr_t size_w = YA_ROUND_DIV(size, YA_SZ_WORD); // size in words
-    fprintf(stderr, "size_w = %ld\n", size_w);
     size_w = 2 + YA_ROUND(size_w, 2); // round to dword and make space for tags
-    fprintf(stderr, "size_w = %ld\n", size_w);
-    intptr_t *block;
-    intptr_t block_size;
-    for (block = heap_start; block < heap_end; block += block_size) {
-        block_size = YA_SZ_BLOCK(block[-1]);
-        if (!YA_IS_ALLOC(block) && size_w <= block_size) {
-            break;
-        }
-    }
-    if (block >= heap_end) { // could not find block, extend heap
-        block = heap_extend(size_w);
-        if (!block) { 
-            return NULL;
-        }
-        block_size = YA_SZ_BLOCK(block[-1]);
-    }
+    ya_debug("malloc: size = %ld, size_w = %ld\n", size, size_w);
+    intptr_t *block = block_find(size_w);
+    intptr_t block_size = YA_SZ_BLOCK(block[-1]);
     if (size_w < block_size) {
         block_split(block, size_w);
     }
