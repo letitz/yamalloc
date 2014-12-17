@@ -17,14 +17,21 @@
 
 /* Constants */
 
-#define YA_SZ_WORD  (sizeof(intptr_t))
-#define YA_SZ_DWORD (2 * YA_SZ_WORD)
-#define YA_SZ_CHUNK 8192
+#define YA_SZ_WORD  (sizeof(intptr_t)) // big enough to hold a pointer
+#define YA_SZ_DWORD (2 * YA_SZ_WORD)   // storage is aligned to a dword
+#define YA_SZ_CHUNK 8192               // request memory 8k by 8k from OS
 
 /* Macros */
 
-#define YA_IS_ALLOC(block) ((block)[-1] & 1)
-#define YA_SZ_BLOCK(size)  ((size) & -2)
+#define YA_IS_ALLOC_TAG(tag) ((tag) & 1)
+#define YA_SZ_TAG(tag)       ((tag) & -2)
+
+#define YA_IS_ALLOC_BLK(block) YA_IS_ALLOC_TAG((block)[-1])
+#define YA_SZ_BLK(block)       YA_SZ_TAG((block)[-1])
+
+#define YA_IS_ALLOC_END(b_end) YA_IS_ALLOC_TAG((b_end)[0])
+#define YA_SZ_END(b_end)       YA_SZ_TAG((b_end)[0])
+
 #define YA_ROUND_DIV(n, m) (((n) + ((m)-1)) / (m))
 #define YA_ROUND(n, m)     (YA_ROUND_DIV(n,m) * (m))
 
@@ -49,20 +56,20 @@ void ya_print_blocks() {
     intptr_t *block;
     intptr_t block_size;
     for (block = heap_start; block < heap_end; block += block_size) {
-        block_size = YA_SZ_BLOCK(block[-1]);
+        block_size = YA_SZ_BLK(block);
         printf("Block at %p  size = %ld  alloc = %d\n",
-                block, block_size, YA_IS_ALLOC(block));
+                block, block_size, YA_IS_ALLOC_BLK(block));
     }
 }
 #endif
 
 intptr_t *block_join_prev(intptr_t *block) {
-    intptr_t prev_size = YA_SZ_BLOCK(block[-2]);
+    intptr_t prev_size = YA_SZ_TAG(block[-2]);
     intptr_t *prev = block - prev_size;
-    if (prev <= heap_start || YA_IS_ALLOC(prev)) {
+    if (prev <= heap_start || YA_IS_ALLOC_BLK(prev)) {
         return block;
     }
-    intptr_t block_size = YA_SZ_BLOCK(block[-1]);
+    intptr_t block_size = YA_SZ_BLK(block);
     intptr_t size = prev_size + block_size;
     prev[-1] = size;
     block[block_size - 2] = size;
@@ -72,12 +79,12 @@ intptr_t *block_join_prev(intptr_t *block) {
 }
 
 intptr_t *block_join_next(intptr_t *block) {
-    intptr_t block_size = YA_SZ_BLOCK(block[-1]);
+    intptr_t block_size = YA_SZ_BLK(block);
     intptr_t *next = block + block_size;
-    if (next >= heap_end || YA_IS_ALLOC(next)) {
+    if (next >= heap_end || YA_IS_ALLOC_BLK(next)) {
         return block;
     }
-    intptr_t next_size = YA_SZ_BLOCK(next[-1]);
+    intptr_t next_size = YA_SZ_BLK(next);
     intptr_t size = next_size + block_size;
     block[-1] = size;
     next[next_size - 2] = size;
@@ -94,7 +101,7 @@ intptr_t *block_join(intptr_t *block) {
 }
 
 void block_split(intptr_t *block, intptr_t size) {
-    intptr_t old_size = YA_SZ_BLOCK(block[-1]);
+    intptr_t old_size = YA_SZ_BLK(block);
     block[-1]           = size;
     block[size - 2]     = size;
     block[size - 1]     = old_size - size;
@@ -105,8 +112,8 @@ intptr_t *block_find(intptr_t size) {
     intptr_t *block;
     intptr_t block_size;
     for (block = heap_start; block < heap_end; block += block_size) {
-        block_size = YA_SZ_BLOCK(block[-1]);
-        if (!YA_IS_ALLOC(block) && size <= block_size) {
+        block_size = YA_SZ_BLK(block);
+        if (!YA_IS_ALLOC_BLK(block) && size <= block_size) {
             return block;
         }
     }
@@ -146,6 +153,7 @@ intptr_t *heap_extend(intptr_t size_w) {
     heap_end[-2]    = size_w;
     ya_debug("heap_extend: old end = %p, new end = %p, size_w = %ld\n",
             block, heap_end, size_w);
+    ya_print_blocks();
     return block_join(ptr);
 }
 
@@ -160,9 +168,10 @@ void *malloc(size_t size) {
     }
     intptr_t size_w = YA_ROUND_DIV(size, YA_SZ_WORD); // size in words
     size_w = 2 + YA_ROUND(size_w, 2); // round to dword and make space for tags
-    ya_debug("malloc: size = %ld, size_w = %ld\n", size, size_w);
+    ya_debug("malloc: requested = %ld, allocating = %ld * %ld = %ld\n",
+            size, size_w, YA_SZ_WORD, size_w * YA_SZ_WORD);
     intptr_t *block = block_find(size_w);
-    intptr_t block_size = YA_SZ_BLOCK(block[-1]);
+    intptr_t block_size = YA_SZ_BLK(block);
     if (size_w < block_size) {
         block_split(block, size_w);
     }
@@ -173,10 +182,10 @@ void *malloc(size_t size) {
 
 void free(void *ptr) {
     intptr_t *block = ptr;
-    if (block < heap_start || block > heap_end || !YA_IS_ALLOC(block)) {
+    if (block < heap_start || block > heap_end || !YA_IS_ALLOC_BLK(block)) {
         return; // TODO: provoke segfault
     }
-    intptr_t block_size = YA_SZ_BLOCK(block[-1]);
+    intptr_t block_size = YA_SZ_BLK(block);
     block[-1]             &= -2; // erase allocated bit
     block[block_size - 2] &= -2;
     block_join(block);
