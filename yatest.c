@@ -7,6 +7,7 @@
 #include <stdio.h>
 
 #include "yamalloc.h"
+#include "ya_debug.h"
 
 void *print_malloc(size_t size) {
     void *ptr = malloc(size);
