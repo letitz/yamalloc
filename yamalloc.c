@@ -35,8 +35,6 @@
 /* Local declarations */
 /*--------------------*/
 
-intptr_t *heap_init();
-intptr_t *heap_extend(intptr_t size);
 
 /*----------------------*/
 /* Function definitions */
@@ -48,7 +46,6 @@ void ya_print_blocks() {
     block_print_range(heap_start, heap_end);
 }
 #endif
-
 
 /* Allocates enough memory to store at least size bytes.
  * Returns a dword-aligned pointer to the memory or NULL in case of failure. */
@@ -63,7 +60,7 @@ void *malloc(size_t size) {
     }
     intptr_t size_w = block_fit(size);
     intptr_t *block = block_find(size_w);
-    intptr_t block_size = YA_SZ_BLK(block);
+    intptr_t block_size = YA_BLK_SZ(block);
     if (size_w < block_size) {
         block_split(block, size_w);
     }
@@ -76,7 +73,7 @@ void *malloc(size_t size) {
  * behavior occurs. */
 void free(void *ptr) {
     intptr_t *block = ptr;
-    if (block < heap_start || block > heap_end || !YA_IS_ALLOC_BLK(block)) {
+    if (block < heap_start || block > heap_end || !YA_BLK_IS_ALLOC(block)) {
         return; // TODO: provoke segfault
     }
     block_free(block);
@@ -88,7 +85,7 @@ void free(void *ptr) {
  * Returns the pointer to the allocated memory or NULL in case of failure. */
 void *calloc(size_t nmemb, size_t size) {
     intptr_t *block = malloc(size * nmemb);
-    intptr_t block_size = YA_SZ_BLK(block);
+    intptr_t block_size = YA_BLK_SZ(block);
     for (int i = 0; i < block_size - 2; i++) {
         block[i] = 0;
     }
@@ -113,7 +110,7 @@ void *realloc(void *ptr, size_t size) {
         return NULL; // TODO: provoke segfault
     }
     intptr_t size_w = block_fit(size);
-    intptr_t block_size = YA_SZ_BLK(block); // segfault if ptr after heap end
+    intptr_t block_size = YA_BLK_SZ(block); // segfault if ptr after heap end
     if (size_w <= block_size) {
         intptr_t *next = block_split(block, size_w);
         if (next) {
@@ -125,8 +122,8 @@ void *realloc(void *ptr, size_t size) {
     intptr_t *next = block + block_size;
     // try to use next free block
     if (next < heap_end) {
-        intptr_t next_size = YA_SZ_BLK(next);
-        if (!YA_IS_ALLOC_BLK(next) && size_w <= block_size + next_size) {
+        intptr_t next_size = YA_BLK_SZ(next);
+        if (!YA_BLK_IS_ALLOC(next) && size_w <= block_size + next_size) {
             block_join_next(block); // coalesce
             block_split(block, size_w); // split if possible
             // no need to coalesce 

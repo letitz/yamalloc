@@ -3,8 +3,8 @@
  * ya_block.h
  */
 
-#ifndef YA_BLOCK_H
-#define YA_BLOCK_H
+#ifndef BLOCK_H
+#define BLOCK_H
 
 /*----------*/
 /* Includes */
@@ -17,24 +17,24 @@
 /* Constants */
 /*-----------*/
 
-#define YA_SZ_WORD  (sizeof(intptr_t)) // big enough to hold a pointer
-#define YA_SZ_DWORD (2 * YA_SZ_WORD)   // storage is aligned to a dword
-#define YA_SZ_CHUNK 8192               // request memory 8k by 8k from OS
+#define YA_WORD_SZ  (sizeof(intptr_t)) // big enough to hold a pointer
+#define YA_DWORD_SZ (2 * YA_WORD_SZ)   // storage is aligned to a dword
+#define YA_CHUNK_SZ 8192               // request memory 8k by 8k from OS
 
-#define YA_MIN_SZ_BLK 4 // smallest block: dword-aligned with two boundary tags
+#define YA_BLK_MIN_SZ 4 // smallest block: dword-aligned with two boundary tags
 
 /*--------*/
 /* Macros */
 /*--------*/
 
-#define YA_IS_ALLOC_TAG(tag) ((tag) & 1)
-#define YA_SZ_TAG(tag)       ((tag) & -2)
+#define YA_TAG_IS_ALLOC(tag) ((tag) & 1)
+#define YA_TAG_SZ(tag)       ((tag) & -2)
 
-#define YA_IS_ALLOC_BLK(block) YA_IS_ALLOC_TAG((block)[-1])
-#define YA_SZ_BLK(block)       YA_SZ_TAG((block)[-1])
+#define YA_BLK_IS_ALLOC(block) YA_TAG_IS_ALLOC((block)[-1])
+#define YA_BLK_SZ(block)       YA_TAG_SZ((block)[-1])
 
-#define YA_IS_ALLOC_END(b_end) YA_IS_ALLOC_TAG((b_end)[0])
-#define YA_SZ_END(b_end)       YA_SZ_TAG((b_end)[0])
+#define YA_END_IS_ALLOC(b_end) YA_TAG_IS_ALLOC((b_end)[0])
+#define YA_END_SZ(b_end)       YA_TAG_SZ((b_end)[0])
 
 #define YA_ROUND_DIV(n, m) (((n) + ((m)-1)) / (m))
 #define YA_ROUND(n, m)     (YA_ROUND_DIV(n,m) * (m))
@@ -59,7 +59,7 @@ intptr_t *heap_init();
  * Returns a pointer to the last (free) block or NULL in case of failure. */
 intptr_t *heap_extend(intptr_t size_w);
 
-#ifdef YA_DEBUG
+#ifdef DEBUG
 /* Prints each block in the range from the block at start to the one at end */
 void block_print_range(intptr_t *start, intptr_t *end);
 #endif

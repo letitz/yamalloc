@@ -27,9 +27,9 @@ void block_print_range(intptr_t *start, intptr_t *end) {
     intptr_t *block;
     intptr_t block_size;
     for (block = start; block < end; block += block_size) {
-        block_size = YA_SZ_BLK(block);
+        block_size = YA_BLK_SZ(block);
         printf("Block at %p  size = %ld  alloc = %d\n",
-                block, block_size, YA_IS_ALLOC_BLK(block));
+                block, block_size, YA_BLK_IS_ALLOC(block));
     }
 }
 #endif
@@ -42,14 +42,14 @@ void block_init(intptr_t *block, intptr_t size) {
 
 /* Sets the allocated bit in the block's boundary tags. */
 void block_alloc(intptr_t *block) {
-    intptr_t block_size = YA_SZ_BLK(block);
+    intptr_t block_size = YA_BLK_SZ(block);
     block[-1]           |= 1;
     block[block_size-2] |= 1;
 }
 
 /* Erases the allocated bit in the block's boundary tags. */
 void block_free(intptr_t *block) {
-    intptr_t block_size = YA_SZ_BLK(block);
+    intptr_t block_size = YA_BLK_SZ(block);
     block[-1]           &= -2;
     block[block_size-2] &= -2;
 }
@@ -57,23 +57,23 @@ void block_free(intptr_t *block) {
 /* Returns the size in words of the smallest block that can
  * store n_bytes bytes. Takes alignment and boundary tags into account */
 intptr_t block_fit(size_t n_bytes) {
-    intptr_t n_words = YA_ROUND_DIV(n_bytes, YA_SZ_WORD); // size in words
+    intptr_t n_words = YA_ROUND_DIV(n_bytes, YA_WORD_SZ); // size in words
     // round to dword and make space for tags 
     intptr_t size = 2 + YA_ROUND(n_words, 2);
     ya_debug("block_fit: requested = %ld, allocating = %ld * %ld = %ld\n",
-            n_bytes, size, YA_SZ_WORD, size * YA_SZ_WORD);
+            n_bytes, size, YA_WORD_SZ, size * YA_WORD_SZ);
     return size;
 }
 
 /* Tries to coalesce a block with its previous neighbor.
  * Returns a pointer to the coalesced block. */
 intptr_t *block_join_prev(intptr_t *block) {
-    intptr_t prev_size = YA_SZ_TAG(block[-2]);
+    intptr_t prev_size = YA_TAG_SZ(block[-2]);
     intptr_t *prev = block - prev_size;
-    if (prev <= heap_start || YA_IS_ALLOC_BLK(prev)) {
+    if (prev <= heap_start || YA_BLK_IS_ALLOC(prev)) {
         return block;
     }
-    intptr_t block_size = YA_SZ_BLK(block);
+    intptr_t block_size = YA_BLK_SZ(block);
     block_init(prev, prev_size + block_size);
     ya_debug("block_join_prev: joining %p:%ld and %p:%ld -> %p:%ld\n",
             block, block_size, prev, prev_size, prev, prev_size + block_size);
@@ -83,12 +83,12 @@ intptr_t *block_join_prev(intptr_t *block) {
 /* Tries to colesce a block with its next neighbor.
  * Returns the unchanged pointer to the block. */
 intptr_t *block_join_next(intptr_t *block) {
-    intptr_t block_size = YA_SZ_BLK(block);
+    intptr_t block_size = YA_BLK_SZ(block);
     intptr_t *next = block + block_size;
-    if (next >= heap_end || YA_IS_ALLOC_BLK(next)) {
+    if (next >= heap_end || YA_BLK_IS_ALLOC(next)) {
         return block;
     }
-    intptr_t next_size = YA_SZ_BLK(next);
+    intptr_t next_size = YA_BLK_SZ(next);
     block_init(block, block_size + next_size);
     ya_debug("block_join_next: joining %p:%ld and %p:%ld -> %p:%ld\n",
             block, block_size, next, next_size, block, block_size + next_size);
@@ -107,8 +107,8 @@ intptr_t *block_join(intptr_t *block) {
 /* Split the block [block_size] into [size, block_size - size] if possible
  * Returns a pointer to the second block or NULL if no split occurred. */
 intptr_t *block_split(intptr_t *block, intptr_t size) {
-    intptr_t next_size = YA_SZ_BLK(block) - size;
-    if (next_size < YA_MIN_SZ_BLK) {
+    intptr_t next_size = YA_BLK_SZ(block) - size;
+    if (next_size < YA_BLK_MIN_SZ) {
         return NULL; // not enough space to warrant a split
     }
     block_init(block, size);
@@ -123,8 +123,8 @@ intptr_t *block_find(intptr_t size) {
     intptr_t *block;
     intptr_t block_size;
     for (block = heap_start; block < heap_end; block += block_size) {
-        block_size = YA_SZ_BLK(block);
-        if (!YA_IS_ALLOC_BLK(block) && size <= block_size) {
+        block_size = YA_BLK_SZ(block);
+        if (!YA_BLK_IS_ALLOC(block) && size <= block_size) {
             return block;
         }
     }
@@ -136,8 +136,8 @@ intptr_t *block_find(intptr_t size) {
  * Sets heap_start and heap_end to their appropriate values.
  * Returns the pointer to the start of the heap or NULL in case of failure. */
 intptr_t *heap_init() {
-    intptr_t size_w = YA_SZ_CHUNK / YA_SZ_WORD;
-    void *ptr = sbrk(YA_SZ_WORD * (size_w + 2));
+    intptr_t size_w = YA_CHUNK_SZ / YA_WORD_SZ;
+    void *ptr = sbrk(YA_WORD_SZ * (size_w + 2));
     if (ptr == (void*) -1) {
         heap_start = NULL;
         heap_end = NULL;
@@ -155,8 +155,8 @@ intptr_t *heap_init() {
 /* Extends the heap by at least size_w words by calling sbrk.
  * Returns a pointer to the last (free) block or NULL in case of failure. */
 intptr_t *heap_extend(intptr_t size_w) {
-    intptr_t size = YA_ROUND(size_w * YA_SZ_WORD, YA_SZ_CHUNK);
-    size_w = size / YA_SZ_WORD;
+    intptr_t size = YA_ROUND(size_w * YA_WORD_SZ, YA_CHUNK_SZ);
+    size_w = size / YA_WORD_SZ;
     ya_debug("heap_extend: size_w = %ld\n", size_w);
     void *ptr = sbrk(size);
     if (ptr == (void *) - 1) {
