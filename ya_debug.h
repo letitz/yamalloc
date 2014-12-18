@@ -6,6 +6,8 @@
 #ifndef YA_DEBUG_H
 #define YA_DEBUG_H
 
+#include <stdio.h> // for fprintf, so that other files may simply include this
+
 #ifdef YA_DEBUG // enables debugging
 
 #define ya_debug(...) fprintf(stderr, __VA_ARGS__)
