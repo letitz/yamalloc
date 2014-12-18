@@ -6,7 +6,7 @@
 #ifndef YAMALLOC_H
 #define YAMALLOC_H
 
-#include <stddef.h>
+#include <stddef.h> // for size_t
 
 void *malloc(size_t size);
 

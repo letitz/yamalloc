@@ -10,7 +10,7 @@ test: yatest
 %.o: %.c
 	$(CC) -c $^ $(CPPFLAGS) $(CFLAGS)
 
-yatest: yatest.o yamalloc.o
+yatest: yatest.o yamalloc.o ya_block.o
 	$(CC) -o $@ $^ $(CFLAGS)
 
 clean:
