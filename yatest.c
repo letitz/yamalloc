@@ -19,6 +19,12 @@ void print_free(void *ptr) {
     free(ptr);
 }
 
+void *print_realloc(void *ptr, size_t size) {
+    void *new_ptr = realloc(ptr, size);
+    fprintf(stderr, "realloc(%p, %ld) = %p\n", ptr, size, new_ptr);
+    return new_ptr;
+}
+
 int main(int argc, char **argv) {
     void *a, *b, *c, *d;
     ya_print_blocks();
@@ -39,5 +45,13 @@ int main(int argc, char **argv) {
     a = print_malloc(2);
     ya_print_blocks();
     print_free(d);
+    ya_print_blocks();
+    d = print_realloc(NULL, 400);
+    ya_print_blocks();
+    d = print_realloc(d, 4000);
+    ya_print_blocks();
+    d = print_realloc(d, 32000);
+    ya_print_blocks();
+    d = print_realloc(d, 1000);
     ya_print_blocks();
 }

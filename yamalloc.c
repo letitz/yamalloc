@@ -21,6 +21,8 @@
 #define YA_SZ_DWORD (2 * YA_SZ_WORD)   // storage is aligned to a dword
 #define YA_SZ_CHUNK 8192               // request memory 8k by 8k from OS
 
+#define YA_MIN_SZ_BLK 4
+
 /* Macros */
 
 #define YA_IS_ALLOC_TAG(tag) ((tag) & 1)
@@ -80,6 +82,15 @@ void block_free(intptr_t *block) {
     block[block_size-2] &= -2;
 }
 
+intptr_t block_fit(size_t n_bytes) {
+    intptr_t n_words = YA_ROUND_DIV(n_bytes, YA_SZ_WORD); // size in words
+    // round to dword and make space for tags 
+    intptr_t size = 2 + YA_ROUND(n_words, 2);
+    ya_debug("block_fit: requested = %ld, allocating = %ld * %ld = %ld\n",
+            n_bytes, size, YA_SZ_WORD, size * YA_SZ_WORD);
+    return size;
+}
+
 intptr_t *block_join_prev(intptr_t *block) {
     intptr_t prev_size = YA_SZ_TAG(block[-2]);
     intptr_t *prev = block - prev_size;
@@ -114,8 +125,12 @@ intptr_t *block_join(intptr_t *block) {
 }
 
 void block_split(intptr_t *block, intptr_t size) {
-    block_init(block + size, YA_SZ_BLK(block) - size);
+    intptr_t next_size = YA_SZ_BLK(block) - size;
+    if (next_size < YA_MIN_SZ_BLK) {
+        return; // not enough space to warrant a split
+    }
     block_init(block, size);
+    block_init(block + size, next_size);
 }
 
 intptr_t *block_find(intptr_t size) {
@@ -174,10 +189,7 @@ void *malloc(size_t size) {
             return NULL;
         }
     }
-    intptr_t size_w = YA_ROUND_DIV(size, YA_SZ_WORD); // size in words
-    size_w = 2 + YA_ROUND(size_w, 2); // round to dword and make space for tags
-    ya_debug("malloc: requested = %ld, allocating = %ld * %ld = %ld\n",
-            size, size_w, YA_SZ_WORD, size_w * YA_SZ_WORD);
+    intptr_t size_w = block_fit(size);
     intptr_t *block = block_find(size_w);
     intptr_t block_size = YA_SZ_BLK(block);
     if (size_w < block_size) {
@@ -194,4 +206,49 @@ void free(void *ptr) {
     }
     block_free(block);
     block_join(block);
+}
+
+void *calloc(size_t nmemb, size_t size) {
+    intptr_t *block = malloc(size * nmemb);
+    intptr_t block_size = YA_SZ_BLK(block);
+    for (int i = 0; i < block_size - 2; i++) {
+        block[i] = 0;
+    }
+    return block;
+}
+
+void *realloc(void *ptr, size_t size) {
+    if (!ptr) {
+        return malloc(size);
+    }
+    if (size == 0) {
+        free(ptr);
+    }
+    intptr_t *block = ptr;
+    if (block < heap_start) {
+        return NULL; // TODO: provoke segfault
+    }
+    intptr_t size_w = block_fit(size);
+    intptr_t block_size = YA_SZ_BLK(block); // segfault if ptr after heap end
+    if (size_w <= block_size) {
+        return block;
+    }
+    intptr_t *next = block + block_size;
+    // try to use next free block
+    if (next < heap_end) {
+        intptr_t next_size = YA_SZ_BLK(next);
+        if (!YA_IS_ALLOC_BLK(next) && size_w <= block_size + next_size) {
+            block_join_next(block); // coalesce
+            block_split(block, size_w); // split if possible
+            block_alloc(block); // mark block as allocated
+            return block;
+        }
+    }
+    // resizing failed, so allocate a whole new block and copy
+    intptr_t *new_block = malloc(size);
+    for (int i = 0; i < block_size; i++) {
+        new_block[i] = block[i];
+    }
+    free(block);
+    return new_block;
 }
