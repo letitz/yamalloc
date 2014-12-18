@@ -63,6 +63,23 @@ void ya_print_blocks() {
 }
 #endif
 
+void block_init(intptr_t *block, intptr_t size) {
+    block[-1]       = size;
+    block[size - 2] = size;
+}
+
+void block_alloc(intptr_t *block) {
+    intptr_t block_size = YA_SZ_BLK(block);
+    block[-1]           |= 1;
+    block[block_size-2] |= 1;
+}
+
+void block_free(intptr_t *block) {
+    intptr_t block_size = YA_SZ_BLK(block);
+    block[-1]           &= -2;
+    block[block_size-2] &= -2;
+}
+
 intptr_t *block_join_prev(intptr_t *block) {
     intptr_t prev_size = YA_SZ_TAG(block[-2]);
     intptr_t *prev = block - prev_size;
@@ -70,11 +87,9 @@ intptr_t *block_join_prev(intptr_t *block) {
         return block;
     }
     intptr_t block_size = YA_SZ_BLK(block);
-    intptr_t size = prev_size + block_size;
-    prev[-1] = size;
-    block[block_size - 2] = size;
+    block_init(prev, prev_size + block_size);
     ya_debug("block_join_prev: joining %p:%ld and %p:%ld -> %p:%ld\n",
-            block, block_size, prev, prev_size, prev, size);
+            block, block_size, prev, prev_size, prev, prev_size + block_size);
     return prev;
 }
 
@@ -85,11 +100,9 @@ intptr_t *block_join_next(intptr_t *block) {
         return block;
     }
     intptr_t next_size = YA_SZ_BLK(next);
-    intptr_t size = next_size + block_size;
-    block[-1] = size;
-    next[next_size - 2] = size;
+    block_init(block, block_size + next_size);
     ya_debug("block_join_next: joining %p:%ld and %p:%ld -> %p:%ld\n",
-            block, block_size, next, next_size, block, size);
+            block, block_size, next, next_size, block, block_size + next_size);
     return block;
 }
 
@@ -101,11 +114,8 @@ intptr_t *block_join(intptr_t *block) {
 }
 
 void block_split(intptr_t *block, intptr_t size) {
-    intptr_t old_size = YA_SZ_BLK(block);
-    block[-1]           = size;
-    block[size - 2]     = size;
-    block[size - 1]     = old_size - size;
-    block[old_size - 2] = old_size - size;
+    block_init(block + size, YA_SZ_BLK(block) - size);
+    block_init(block, size);
 }
 
 intptr_t *block_find(intptr_t size) {
@@ -132,8 +142,7 @@ intptr_t *heap_init() {
     heap_start     = ptr; // cast to intptr_t *
     heap_start    += 2; // space for the first block[-1] + dword alignment
     heap_end       = heap_start + size_w;
-    heap_start[-1] = size_w;
-    heap_end[-2]   = size_w;
+    block_init(heap_start, size_w);
     ya_debug("heap_init: start = %p, end = %p, size_w = %ld\n",
             heap_start, heap_end, size_w);
     return heap_start;
@@ -149,8 +158,7 @@ intptr_t *heap_extend(intptr_t size_w) {
     }
     intptr_t *block = ptr; // == old heap_end
     heap_end        = block + size_w;
-    block[-1]       = size_w;
-    heap_end[-2]    = size_w;
+    block_init(block, size_w);
     ya_debug("heap_extend: old end = %p, new end = %p, size_w = %ld\n",
             block, heap_end, size_w);
     ya_print_blocks();
@@ -175,8 +183,7 @@ void *malloc(size_t size) {
     if (size_w < block_size) {
         block_split(block, size_w);
     }
-    block[-1] |= 1;
-    block[block_size - 2] |= 1;
+    block_alloc(block);
     return block;
 }
 
@@ -185,8 +192,6 @@ void free(void *ptr) {
     if (block < heap_start || block > heap_end || !YA_IS_ALLOC_BLK(block)) {
         return; // TODO: provoke segfault
     }
-    intptr_t block_size = YA_SZ_BLK(block);
-    block[-1]             &= -2; // erase allocated bit
-    block[block_size - 2] &= -2;
+    block_free(block);
     block_join(block);
 }
