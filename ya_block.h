@@ -12,6 +12,7 @@
 
 #include <stddef.h> // for size_t
 #include <stdint.h> // for intptr_t
+#include <stdbool.h>
 
 /*-----------*/
 /* Constants */
@@ -27,15 +28,6 @@
 /* Macros */
 /*--------*/
 
-#define YA_TAG_IS_ALLOC(tag) ((tag) & 1)
-#define YA_TAG_SZ(tag)       ((tag) & -2)
-
-#define YA_BLK_IS_ALLOC(block) YA_TAG_IS_ALLOC((block)[-1])
-#define YA_BLK_SZ(block)       YA_TAG_SZ((block)[-1])
-
-#define YA_END_IS_ALLOC(b_end) YA_TAG_IS_ALLOC((b_end)[0])
-#define YA_END_SZ(b_end)       YA_TAG_SZ((b_end)[0])
-
 #define YA_ROUND_DIV(n, m) (((n) + ((m)-1)) / (m))
 #define YA_ROUND(n, m)     (YA_ROUND_DIV(n,m) * (m))
 
@@ -45,6 +37,30 @@
 
 extern intptr_t *heap_start; // with space for 2 words before
 extern intptr_t *heap_end  ; // first block outside heap
+
+/*---------*/
+/* Inlines */
+/*---------*/
+
+/* Returns true iff the boundary tag has the allocated bit set. */
+static inline bool tag_is_alloc(intptr_t tag) {
+    return tag & 1;
+}
+
+/* Returns true iff the block's boundary tag has the allocated bit set. */
+static inline bool block_is_alloc(intptr_t *block) {
+    return tag_is_alloc(block[-1]);
+}
+
+/* Returns the size stored in the boundary tag. */
+static inline intptr_t tag_size(intptr_t tag) {
+    return tag & -2;
+}
+
+/* Returns the size stored in the block's boundary tag. */
+static inline intptr_t block_size(intptr_t *block) {
+    return tag_size(block[-1]);
+}
 
 /*--------------*/
 /* Declarations */
@@ -59,7 +75,7 @@ intptr_t *heap_init();
  * Returns a pointer to the last (free) block or NULL in case of failure. */
 intptr_t *heap_extend(intptr_t size_w);
 
-#ifdef DEBUG
+#ifdef YA_DEBUG
 /* Prints each block in the range from the block at start to the one at end */
 void block_print_range(intptr_t *start, intptr_t *end);
 #endif
@@ -72,6 +88,9 @@ void block_alloc(intptr_t *block);
 
 /* Erases the allocated bit in the block's boundary tags. */
 void block_free(intptr_t *block);
+
+/* Fills block with zeros. */
+void block_clear(intptr_t *block);
 
 /* Returns the size in words of the smallest block that can
  * store n_bytes bytes. Takes alignment and boundary tags into account */
@@ -96,6 +115,6 @@ intptr_t *block_split(intptr_t *block, intptr_t size);
 /* Try to find a free block at least size words big by walking the boundary
  * tags. If no block is found the heap is grown adequately.
  * Returns a pointer to the block or NULL in case of failure. */
-intptr_t *block_find(intptr_t size);
+intptr_t *block_find(intptr_t min_size);
 
 #endif

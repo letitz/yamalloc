@@ -49,8 +49,8 @@ void ya_print_blocks() {
 
 /* Allocates enough memory to store at least size bytes.
  * Returns a dword-aligned pointer to the memory or NULL in case of failure. */
-void *malloc(size_t size) {
-    if (size == 0) {
+void *malloc(size_t n_bytes) {
+    if (n_bytes == 0) {
         return NULL;
     }
     if (heap_start == NULL || heap_end == NULL) {
@@ -58,12 +58,9 @@ void *malloc(size_t size) {
             return NULL;
         }
     }
-    intptr_t size_w = block_fit(size);
-    intptr_t *block = block_find(size_w);
-    intptr_t block_size = YA_BLK_SZ(block);
-    if (size_w < block_size) {
-        block_split(block, size_w);
-    }
+    intptr_t min_size = block_fit(n_bytes);
+    intptr_t *block = block_find(min_size);
+    block_split(block, min_size);
     block_alloc(block);
     return block;
 }
@@ -73,7 +70,7 @@ void *malloc(size_t size) {
  * behavior occurs. */
 void free(void *ptr) {
     intptr_t *block = ptr;
-    if (block < heap_start || block > heap_end || !YA_BLK_IS_ALLOC(block)) {
+    if (block < heap_start || block > heap_end || !block_is_alloc(block)) {
         return; // TODO: provoke segfault
     }
     block_free(block);
@@ -83,12 +80,10 @@ void free(void *ptr) {
 /* Allocates enough memory to store an array of nmemb elements,
  * each size bytes large, and clears the memory.
  * Returns the pointer to the allocated memory or NULL in case of failure. */
-void *calloc(size_t nmemb, size_t size) {
-    intptr_t *block = malloc(size * nmemb);
-    intptr_t block_size = YA_BLK_SZ(block);
-    for (int i = 0; i < block_size - 2; i++) {
-        block[i] = 0;
-    }
+void *calloc(size_t nmemb, size_t n_bytes) {
+    intptr_t *block = malloc(n_bytes * nmemb);
+    intptr_t size = block_size(block);
+    block_clear(block);
     return block;
 }
 
@@ -98,34 +93,37 @@ void *calloc(size_t nmemb, size_t size) {
  * If ptr does not point to memory previously allocated by malloc, calloc or
  * realloc, undefined behavior occurs.
  *  */
-void *realloc(void *ptr, size_t size) {
+void *realloc(void *ptr, size_t n_bytes) {
     if (!ptr) {
-        return malloc(size);
+        return malloc(n_bytes);
     }
-    if (size == 0) {
+    if (n_bytes == 0) {
         free(ptr);
     }
     intptr_t *block = ptr;
     if (block < heap_start) {
         return NULL; // TODO: provoke segfault
     }
-    intptr_t size_w = block_fit(size);
-    intptr_t block_size = YA_BLK_SZ(block); // segfault if ptr after heap end
-    if (size_w <= block_size) {
-        intptr_t *next = block_split(block, size_w);
+    intptr_t new_size = block_fit(n_bytes);
+    intptr_t size = block_size(block); // segfault if ptr after heap end
+    if (new_size == size) {
+        return ptr; // don't change anything
+    }
+    if (new_size < size) {
+        intptr_t *next = block_split(block, new_size);
         if (next) {
             block_join_next(next); // coalesce the leftovers
         }
         block_alloc(block);
         return block;
     }
-    intptr_t *next = block + block_size;
+    intptr_t *next = block + size;
     // try to use next free block
     if (next < heap_end) {
-        intptr_t next_size = YA_BLK_SZ(next);
-        if (!YA_BLK_IS_ALLOC(next) && size_w <= block_size + next_size) {
+        intptr_t next_size = block_size(next);
+        if (!block_is_alloc(next) && new_size <= size + next_size) {
             block_join_next(block); // coalesce
-            block_split(block, size_w); // split if possible
+            block_split(block, new_size); // split if possible
             // no need to coalesce 
             block_alloc(block); // mark block as allocated
             return block;
@@ -134,8 +132,8 @@ void *realloc(void *ptr, size_t size) {
     // resizing failed, so allocate a whole new block and copy
     // could handle the case when the block is the last in the heap 
     // a bit more gracefully and just grow the heap instead of copying
-    intptr_t *new_block = malloc(size);
-    for (int i = 0; i < block_size; i++) {
+    intptr_t *new_block = malloc(n_bytes);
+    for (int i = 0; i < size; i++) {
         new_block[i] = block[i];
     }
     free(block);
