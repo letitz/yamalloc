@@ -3,38 +3,14 @@
  * yamalloc.c
  */
 
-/*---------------------*/
-/* Feature test macros */
-/*---------------------*/
-
-#define _DEFAULT_SOURCE // for sbrk
-
 /*----------*/
 /* Includes */
 /*----------*/
 
-#include <unistd.h>
-#include <stdio.h>
-#include <stdbool.h>
-
 #include "yamalloc.h"
 #include "ya_debug.h"
 #include "ya_block.h"
-
-/*-----------*/
-/* Constants */
-/*-----------*/
-
-
-/*--------*/
-/* Macros */
-/*--------*/
-
-
-/*--------------------*/
-/* Local declarations */
-/*--------------------*/
-
+#include "ya_freelist.h"
 
 /*----------------------*/
 /* Function definitions */
@@ -43,7 +19,10 @@
 #ifdef YA_DEBUG
 /* Print all blocks in the heap */
 void ya_print_blocks() {
+    ya_debug("All blocks:\n");
     block_print_range(heap_start, heap_end);
+    ya_debug("Free blocks:\n");
+    fl_debug_print();
 }
 #endif
 
