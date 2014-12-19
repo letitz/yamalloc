@@ -19,6 +19,7 @@
 
 #include "ya_debug.h"
 #include "ya_block.h"
+#include "ya_freelist.h"
 
 /*-----------*/
 /* Constants */
@@ -28,8 +29,8 @@
 static const size_t WORD_SIZE = sizeof(intptr_t);
 /* request memory 8k by 8k from OS */
 static const size_t CHUNK_SIZE = 8192;
-/* smallest block: dword-aligned with two boundary tags */
-static const size_t MIN_BLOCK_SIZE = 4;
+/* smallest non-empty dword-aligned block with 4 boundary tags */
+static const size_t MIN_BLOCK_SIZE = 6;
 
 /*---------*/
 /* Globals */
@@ -73,27 +74,27 @@ void block_print_range(intptr_t *start, intptr_t *end) {
 
 /* Initializes the block's boundary tags. */
 void block_init(intptr_t *block, intptr_t size) {
-    block[-1]       = size;
-    block[size - 2] = size;
+    block[-1]     = size;
+    block[size-4] = size;
 }
 
 /* Sets the allocated bit in the block's boundary tags. */
 void block_alloc(intptr_t *block) {
     intptr_t size = block_size(block);
     block[-1]     |= 1;
-    block[size-2] |= 1;
+    block[size-4] |= 1;
 }
 
 /* Erases the allocated bit in the block's boundary tags. */
 void block_free(intptr_t *block) {
     intptr_t size = block_size(block);
     block[-1]     &= -2;
-    block[size-2] &= -2;
+    block[size-4] &= -2;
 }
 
 /* Fills block with zeros. */
 void block_clear(intptr_t *block) {
-    intptr_t *end = block + block_size(block) - 2;
+    intptr_t *end = block + block_size(block) - 4;
     for (intptr_t *p = block; p < end; p++) {
         *p = 0;
     }
@@ -104,7 +105,7 @@ void block_clear(intptr_t *block) {
 intptr_t block_fit(size_t n_bytes) {
     intptr_t n_words = round_div(n_bytes, WORD_SIZE); // size in words
     // round to dword and make space for tags 
-    intptr_t size = 2 + round_to(n_words, 2);
+    intptr_t size = 4 + round_to(n_words, 2);
     ya_debug("block_fit: requested = %ld, allocating = %ld * %ld = %ld\n",
             n_bytes, size, WORD_SIZE, size * WORD_SIZE);
     return size;
@@ -116,7 +117,7 @@ intptr_t *block_join_prev(intptr_t *block) {
     if (block < heap_start + MIN_BLOCK_SIZE) {
         return block; // there cannot be a previous block
     }
-    intptr_t prev_size = tag_size(block[-2]);
+    intptr_t prev_size = tag_size(block[-4]);
     intptr_t *prev = block - prev_size;
     if (prev <= heap_start || block_is_alloc(prev)) {
         return block;
@@ -191,9 +192,11 @@ intptr_t *heap_init() {
         return NULL;
     }
     heap_start     = ptr; // cast to intptr_t *
-    heap_start    += 2; // space for the first block[-1] + dword alignment
+    heap_start    += 2; // space for the first block's tags + dword alignment
     heap_end       = heap_start + size;
     block_init(heap_start, size);
+    fl_set_prev(heap_start, NULL);
+    fl_set_next(heap_start, NULL);
     ya_debug("heap_init: start = %p, end = %p, size = %ld\n",
             heap_start, heap_end, size);
     return heap_start;
@@ -202,10 +205,8 @@ intptr_t *heap_init() {
 /* Extends the heap by at least size_w words by calling sbrk.
  * Returns a pointer to the last (free) block or NULL in case of failure. */
 intptr_t *heap_extend(intptr_t size) {
-    intptr_t n_bytes = round_to(size * WORD_SIZE, CHUNK_SIZE);
-    size = n_bytes / WORD_SIZE;
-    ya_debug("heap_extend: n_bytes = %ld  size = %ld\n", n_bytes, size);
-    void *ptr = sbrk(n_bytes);
+    size = block_fit(round_to(WORD_SIZE * size, CHUNK_SIZE));
+    void *ptr = sbrk(WORD_SIZE * size);
     if (ptr == (void *) - 1) {
         return NULL;
     }

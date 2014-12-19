@@ -3,6 +3,15 @@
  * ya_block.h
  */
 
+/* Block layout:
+ *
+ * -2     -1     0                               size-4 size-3
+ * +------+------+-------- - - - - - - - --------+------+------+
+ * | prev | size | data...                       | size | next |
+ * +------+------+-------- - - - - - - - --------+------+------+
+ *
+ */
+
 #ifndef YA_BLOCK_H
 #define YA_BLOCK_H
 
