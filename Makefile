@@ -1,6 +1,6 @@
 CC=`which gcc`
 CPPFLAGS=-DYA_DEBUG
-CFLAGS=--std=c11 -ggdb
+CFLAGS=--std=c11 -ggdb -Werror
 
 all: yatest
 
