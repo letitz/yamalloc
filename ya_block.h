@@ -3,8 +3,8 @@
  * ya_block.h
  */
 
-#ifndef BLOCK_H
-#define BLOCK_H
+#ifndef YA_BLOCK_H
+#define YA_BLOCK_H
 
 /*----------*/
 /* Includes */
@@ -14,25 +14,8 @@
 #include <stdint.h> // for intptr_t
 #include <stdbool.h>
 
-/*-----------*/
-/* Constants */
-/*-----------*/
-
-#define YA_WORD_SZ  (sizeof(intptr_t)) // big enough to hold a pointer
-#define YA_DWORD_SZ (2 * YA_WORD_SZ)   // storage is aligned to a dword
-#define YA_CHUNK_SZ 8192               // request memory 8k by 8k from OS
-
-#define YA_BLK_MIN_SZ 4 // smallest block: dword-aligned with two boundary tags
-
-/*--------*/
-/* Macros */
-/*--------*/
-
-#define YA_ROUND_DIV(n, m) (((n) + ((m)-1)) / (m))
-#define YA_ROUND(n, m)     (YA_ROUND_DIV(n,m) * (m))
-
 /*---------*/
-/* Globals */
+/* Externs */
 /*---------*/
 
 extern intptr_t *heap_start; // with space for 2 words before
@@ -112,8 +95,8 @@ intptr_t *block_join(intptr_t *block);
  * Returns a pointer to the second block or NULL if no split occurred. */
 intptr_t *block_split(intptr_t *block, intptr_t size);
 
-/* Try to find a free block at least size words big by walking the boundary
- * tags. If no block is found the heap is grown adequately.
+/* Try to find a free block at least min_size words big by walking the
+ * boundary tags. If no block is found the heap is grown adequately.
  * Returns a pointer to the block or NULL in case of failure. */
 intptr_t *block_find(intptr_t min_size);
 

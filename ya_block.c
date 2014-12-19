@@ -20,12 +20,37 @@
 #include "ya_debug.h"
 #include "ya_block.h"
 
+/*-----------*/
+/* Constants */
+/*-----------*/
+
+/* big enough to hold a pointer */
+static const size_t WORD_SIZE = sizeof(intptr_t);
+/* request memory 8k by 8k from OS */
+static const size_t CHUNK_SIZE = 8192;
+/* smallest block: dword-aligned with two boundary tags */
+static const size_t MIN_BLOCK_SIZE = 4;
+
 /*---------*/
 /* Globals */
 /*---------*/
 
 intptr_t *heap_start = NULL; // with space for 2 words before
 intptr_t *heap_end = NULL;   // first block outside heap
+
+/*---------*/
+/* Inlines */
+/*---------*/
+
+/* Returns the smallest number p such that n <= p*m. */
+static inline intptr_t round_div(intptr_t n, intptr_t m) {
+    return (n + m - 1) / m;
+}
+
+/* Returns the smallest multiple of m that is >= n. */
+static inline intptr_t round_to(intptr_t n, intptr_t m) {
+    return round_div(n,m) * m;
+}
 
 /*----------------------*/
 /* Function definitions */
@@ -77,18 +102,18 @@ void block_clear(intptr_t *block) {
 /* Returns the size in words of the smallest block that can
  * store n_bytes bytes. Takes alignment and boundary tags into account */
 intptr_t block_fit(size_t n_bytes) {
-    intptr_t n_words = YA_ROUND_DIV(n_bytes, YA_WORD_SZ); // size in words
+    intptr_t n_words = round_div(n_bytes, WORD_SIZE); // size in words
     // round to dword and make space for tags 
-    intptr_t size = 2 + YA_ROUND(n_words, 2);
+    intptr_t size = 2 + round_to(n_words, 2);
     ya_debug("block_fit: requested = %ld, allocating = %ld * %ld = %ld\n",
-            n_bytes, size, YA_WORD_SZ, size * YA_WORD_SZ);
+            n_bytes, size, WORD_SIZE, size * WORD_SIZE);
     return size;
 }
 
 /* Tries to coalesce a block with its previous neighbor.
  * Returns a pointer to the coalesced block. */
 intptr_t *block_join_prev(intptr_t *block) {
-    if (block < heap_start + YA_BLK_MIN_SZ) {
+    if (block < heap_start + MIN_BLOCK_SIZE) {
         return block; // there cannot be a previous block
     }
     intptr_t prev_size = tag_size(block[-2]);
@@ -118,6 +143,7 @@ intptr_t *block_join_next(intptr_t *block) {
     return block;
 }
 
+
 /* Tries to coalesce a block with its previous and next neighbors.
  * Returns a pointer to the coalesced block. */
 intptr_t *block_join(intptr_t *block) {
@@ -129,7 +155,7 @@ intptr_t *block_join(intptr_t *block) {
  * Returns a pointer to the second block or NULL if no split occurred. */
 intptr_t *block_split(intptr_t *block, intptr_t size) {
     intptr_t next_size = block_size(block) - size;
-    if (next_size < YA_BLK_MIN_SZ) {
+    if (next_size < MIN_BLOCK_SIZE) {
         return NULL; // not enough space to warrant a split
     }
     block_init(block, size);
@@ -157,8 +183,8 @@ intptr_t *block_find(intptr_t min_size) {
  * Sets heap_start and heap_end to their appropriate values.
  * Returns the pointer to the start of the heap or NULL in case of failure. */
 intptr_t *heap_init() {
-    intptr_t size_w = YA_CHUNK_SZ / YA_WORD_SZ;
-    void *ptr = sbrk(YA_WORD_SZ * (size_w + 2));
+    intptr_t size = block_fit(CHUNK_SIZE); 
+    void *ptr = sbrk(WORD_SIZE * (size + 2));
     if (ptr == (void*) -1) {
         heap_start = NULL;
         heap_end = NULL;
@@ -166,28 +192,28 @@ intptr_t *heap_init() {
     }
     heap_start     = ptr; // cast to intptr_t *
     heap_start    += 2; // space for the first block[-1] + dword alignment
-    heap_end       = heap_start + size_w;
-    block_init(heap_start, size_w);
-    ya_debug("heap_init: start = %p, end = %p, size_w = %ld\n",
-            heap_start, heap_end, size_w);
+    heap_end       = heap_start + size;
+    block_init(heap_start, size);
+    ya_debug("heap_init: start = %p, end = %p, size = %ld\n",
+            heap_start, heap_end, size);
     return heap_start;
 }
 
 /* Extends the heap by at least size_w words by calling sbrk.
  * Returns a pointer to the last (free) block or NULL in case of failure. */
-intptr_t *heap_extend(intptr_t size_w) {
-    intptr_t size = YA_ROUND(size_w * YA_WORD_SZ, YA_CHUNK_SZ);
-    size_w = size / YA_WORD_SZ;
-    ya_debug("heap_extend: size_w = %ld\n", size_w);
-    void *ptr = sbrk(size);
+intptr_t *heap_extend(intptr_t size) {
+    intptr_t n_bytes = round_to(size * WORD_SIZE, CHUNK_SIZE);
+    size = n_bytes / WORD_SIZE;
+    ya_debug("heap_extend: n_bytes = %ld  size = %ld\n", n_bytes, size);
+    void *ptr = sbrk(n_bytes);
     if (ptr == (void *) - 1) {
         return NULL;
     }
     intptr_t *block = ptr; // == old heap_end
-    heap_end        = block + size_w;
-    block_init(block, size_w);
-    ya_debug("heap_extend: old end = %p, new end = %p, size_w = %ld\n",
-            block, heap_end, size_w);
+    heap_end        = block + size;
+    block_init(block, size);
+    ya_debug("heap_extend: old end = %p, new end = %p, size = %ld\n",
+            block, heap_end, size);
     ya_print_blocks();
     return block_join(ptr);
 }
