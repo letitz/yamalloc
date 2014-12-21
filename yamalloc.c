@@ -16,16 +16,6 @@
 /* Function definitions */
 /*----------------------*/
 
-#ifdef YA_DEBUG
-/* Print all blocks in the heap */
-void ya_print_blocks() {
-    ya_debug("All blocks:\n");
-    block_print_range(heap_start, heap_end);
-    ya_debug("Free blocks:\n");
-    fl_debug_print();
-}
-#endif
-
 /* Allocates enough memory to store at least size bytes.
  * Returns a dword-aligned pointer to the memory or NULL in case of failure. */
 void *malloc(size_t n_bytes) {
@@ -148,3 +138,33 @@ void *realloc(void *ptr, size_t n_bytes) {
     free(block);
     return new_block;
 }
+
+#ifdef YA_DEBUG
+/* Print all blocks in the heap */
+void ya_print_blocks() {
+    ya_debug("All blocks:\n");
+    block_print_range(heap_start, heap_end);
+    ya_debug("Free blocks:\n");
+    fl_debug_print();
+}
+
+/* Checks internal state for errors.
+ * Returns -1 on error, 0 otherwise. */
+int ya_check() {
+    int heap_free = heap_check();
+    if (heap_free == -1) {
+        return -1;
+    }
+    int fl_free = fl_check();
+    if (fl_free == -1) {
+        return -1;
+    }
+    if (fl_free != heap_free) {
+        ya_debug("ya_check: heap_check reports %d free blocks, fl_check %d\n",
+                heap_free, fl_free);
+        return -1;
+    }
+    return 0;
+}
+
+#endif

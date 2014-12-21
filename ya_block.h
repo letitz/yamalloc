@@ -71,6 +71,11 @@ intptr_t *heap_extend(size_t n_bytes);
 #ifdef YA_DEBUG
 /* Prints each block in the range from the block at start to the one at end */
 void block_print_range(intptr_t *start, intptr_t *end);
+
+/* Checks the heap and each block for consistency.
+ * Does not check the free list.
+ * Returns -1 on error, the total number of free blocks otherwise. */
+int heap_check();
 #endif
 
 /* Initializes the block's boundary tags. */

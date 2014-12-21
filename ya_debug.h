@@ -14,10 +14,15 @@
 
 void ya_print_blocks();
 
+/* Checks internal state for errors.
+ * Returns -1 on error, 0 otherwise. */
+int ya_check();
+
 #else
 
 #define ya_debug(...)
 #define ya_print_blocks(...)
+#define ya_check(...)
 
 #endif // def YA_DEBUG
 

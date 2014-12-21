@@ -61,21 +61,6 @@ static inline intptr_t inner_bytes(intptr_t *block) {
 /* Function definitions */
 /*----------------------*/
 
-#ifdef YA_DEBUG
-void block_print_range(intptr_t *start, intptr_t *end) {
-    if (!start || !end) {
-        return;
-    }
-    intptr_t *block;
-    intptr_t size;
-    for (block = start; block < end; block += size) {
-        size = block_size(block);
-        ya_debug("%d %p:%ld\n",
-                 block_is_alloc(block), block, size);
-    }
-}
-#endif
-
 /* Initializes the block's boundary tags. */
 void block_init(intptr_t *block, intptr_t size) {
     block[-1]     = size;
@@ -234,3 +219,79 @@ intptr_t *heap_extend(size_t n_bytes) {
     ya_print_blocks();
     return block;
 }
+
+#ifdef YA_DEBUG
+
+/* Checks one block for consistency. Does not check the free list tags.
+ * Returns -1 on error, 0 otherwise. */
+int block_check(intptr_t *block) {
+    if ((intptr_t) block & (WORD_SIZE-1)) {
+        ya_debug("block_check(%p): not aligned\n", block);
+        return -1;
+    }
+    intptr_t size = block_size(block);
+    if (size & 1) {
+        ya_debug("block_check(%p): size %ld not aligned\n", block, size);
+        return -1;
+    }
+    if (block[-1] != block[size-4]) {
+        ya_debug("block_check(%p): tags don't match %ld != %ld\n",
+                block, block[-1], block[size-4]);
+        return -1;
+    }
+    return 0;
+}
+
+/* Checks the heap and each block for consistency.
+ * Does not check the free list.
+ * Returns -1 on error, the total number of free blocks otherwise. */
+int heap_check() {
+    if (!heap_start || !heap_end) {
+        ya_debug("heap_check: heap not initialized correctly %p-%p\n",
+                heap_start, heap_end);
+        return -1;
+    }
+    if ((intptr_t) heap_start & (WORD_SIZE-1)) {
+        ya_debug("heap_check: heap start %p not aligned\n", heap_start);
+        return -1;
+    }
+    if ((intptr_t) heap_end & (WORD_SIZE-1)) {
+        ya_debug("heap_check: heap end %p not aligned\n", heap_end);
+        return -1;
+    }
+    if ((heap_end - heap_start) & 1) {
+        ya_debug("heap_check: heap size %p not aligned\n",
+                heap_end - heap_start);
+        return -1;
+    }
+    int num_free = 0;
+    bool prev_free = false;
+    intptr_t *block;
+    for (block = heap_start; block < heap_end; block += block_size(block)) {
+        if (block_check(block)) {
+            return -1;
+        }
+        if (prev_free && !block_is_alloc(block)) {
+            ya_debug("heap_check: block %p and prev are both free\n", block);
+            return -1;
+        }
+        prev_free = !block_is_alloc(block);
+        num_free += prev_free;
+    }
+    return num_free;
+}
+
+void block_print_range(intptr_t *start, intptr_t *end) {
+    if (!start || !end) {
+        return;
+    }
+    intptr_t *block;
+    intptr_t size;
+    for (block = start; block < end; block += size) {
+        size = block_size(block);
+        ya_debug("%d %p:%ld\n",
+                 block_is_alloc(block), block, size);
+    }
+}
+
+#endif //def YA_DEBUG

@@ -23,14 +23,6 @@ intptr_t *fl_end = NULL;   // sorted decreasing
 /* Functions */
 /*-----------*/
 
-#ifdef YA_DEBUG
-void fl_debug_print() {
-    for (intptr_t *block = fl_start; block != NULL; block = fl_next(block)) {
-        ya_debug("%p:%ld\n", block, block_size(block));
-    }
-}
-#endif
-
 /* Splices the allocated block out of the free list. */
 void fl_alloc(intptr_t *block) {
     intptr_t size  = block_size(block);
@@ -157,3 +149,78 @@ intptr_t *fl_get_start() {
 intptr_t *fl_get_end() {
     return fl_end;
 }
+
+#ifdef YA_DEBUG
+
+void fl_debug_print() {
+    for (intptr_t *block = fl_start; block != NULL; block = fl_next(block)) {
+        ya_debug("%p:%ld\n", block, block_size(block));
+    }
+}
+
+/* Checks that block's information is consistent. The previous pointer should
+ * point to correct_prev, which was the previous free block during free list
+ * iteration.
+ * Returns -1 on error, 0 otherwise. */
+int fl_check_one(intptr_t *block, intptr_t *correct_prev) {
+    if (block < heap_start || block >= heap_end) {
+        ya_debug("fl_check_one: block %p out of bounds\n", block);
+        return -1;
+    }
+    intptr_t *prev = fl_prev(block);
+    if (prev && (prev < heap_start || prev >= heap_end)) {
+        ya_debug("fl_check_one: previous pointer %p out of bounds [%p,%p[\n",
+                prev, heap_start, heap_end);
+        return -1;
+    }
+    if (correct_prev != prev) {
+        ya_debug("fl_check_one(%p): previous pointer mismatch, "
+                "should be %p, not %p\n", block, correct_prev, prev);
+        return -1;
+    }
+    intptr_t *next = fl_next(block);
+    if (next && (next < heap_start || next >= heap_end)) {
+        ya_debug("fl_check_one: next pointer %p out of bounds [%p,%p[\n",
+                next, heap_start, heap_end);
+        return -1;
+    }
+    return 0;
+}
+
+/* Checks the free list for consistency.
+ * Returns -1 on error, the total number of free blocks otherwise. */
+int fl_check() {
+    if (!fl_start) {
+        if (fl_end) {
+            ya_debug("fl_check: fl_start == NULL but fl_end == %p\n", fl_end);
+            return -1;
+        }
+        return 0;
+    }
+    if (!fl_end) {
+        ya_debug("fl_check: fl_end == NULL but fl_start == %p\n", fl_start);
+        return -1;
+    }
+    if (fl_start < heap_start || fl_start >= heap_end) {
+        ya_debug("fl_check: fl_start %p out of bounds\n", fl_start);
+        return -1;
+    }
+    if (fl_end < heap_start || fl_end >= heap_end) {
+        ya_debug("fl_check: fl_ebd %p out of bounds\n", fl_end);
+        return -1;
+    }
+    int num_free = 0;
+    intptr_t *prev = NULL;
+    intptr_t *block;
+    for (block = fl_start; block; block = fl_next(block)) {
+        num_free++;
+        if (fl_check_one(block, prev)) {
+            return -1;
+        }
+        prev = block;
+    }
+    return num_free;
+}
+
+#endif // def YA_DEBUG
+

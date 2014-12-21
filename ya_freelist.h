@@ -49,7 +49,14 @@ static inline void fl_set_next(intptr_t *block, intptr_t *next) {
 /*--------------*/
 
 #ifdef YA_DEBUG
+
+/* Prints debug information about the free list. */
 void fl_debug_print();
+
+/* Checks the free list for consistency.
+ * Returns -1 on error, the total number of free blocks otherwise. */
+int fl_check();
+
 #endif
 
 /* Splices the allocated block out of the free list. */
