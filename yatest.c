@@ -55,4 +55,6 @@ int main(int argc, char **argv) {
     ya_print_blocks();
     d = print_realloc(d, 1000);
     ya_print_blocks();
+    c = print_realloc(c, 500);
+    ya_print_blocks();
 }
