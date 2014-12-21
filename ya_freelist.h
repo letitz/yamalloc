@@ -71,4 +71,10 @@ void fl_join_next(intptr_t *block);
 
 void fl_join(intptr_t *block);
 
+/* Returns a pointer to the first free block. */
+intptr_t *fl_get_start();
+
+/* Returns a pointer to the last free block. */
+intptr_t *fl_get_end();
+
 #endif

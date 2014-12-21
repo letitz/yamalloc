@@ -63,7 +63,8 @@ static inline intptr_t block_size(intptr_t *block) {
  * Returns the pointer to the start of the heap or NULL in case of failure. */
 intptr_t *heap_init();
 
-/* Extends the heap by at least n_bytes bytes by calling sbrk.
+/* Extends the heap enough for the last block to be at least n_bytes bytes
+ * large by calling sbrk.
  * Returns a pointer to the last (free) block or NULL in case of failure. */
 intptr_t *heap_extend(size_t n_bytes);
 

@@ -53,6 +53,10 @@ static inline intptr_t round_to(intptr_t n, intptr_t m) {
     return round_div(n,m) * m;
 }
 
+static inline intptr_t inner_bytes(intptr_t *block) {
+    return (block_size(block) - 4) * WORD_SIZE;
+}
+
 /*----------------------*/
 /* Function definitions */
 /*----------------------*/
@@ -201,9 +205,18 @@ intptr_t *heap_init() {
     return heap_start;
 }
 
-/* Extends the heap by at least n_bytes bytes by calling sbrk.
+/* Extends the heap enough for the last block to be at least n_bytes bytes
+ * large by calling sbrk.
  * Returns a pointer to the last (free) block or NULL in case of failure. */
 intptr_t *heap_extend(size_t n_bytes) {
+    intptr_t *last = fl_get_end();
+    if (last) {
+        intptr_t last_bytes = inner_bytes(last);
+        if (last_bytes >= n_bytes) {
+            return last;
+        }
+        n_bytes -= last_bytes;
+    }
     // request an integer number of blocks
     intptr_t size = block_fit(round_to(n_bytes, CHUNK_SIZE));
     void *ptr = sbrk(WORD_SIZE * size);
