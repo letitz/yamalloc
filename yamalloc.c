@@ -37,10 +37,17 @@ void *malloc(size_t n_bytes) {
             return NULL;
         }
     }
-    intptr_t min_size = block_fit(n_bytes);
-    intptr_t *block = block_find(min_size);
-    block_split(block, min_size);
+    intptr_t size = block_fit(n_bytes);
+    intptr_t *block = block_find(size);
+    if (!block) {
+        block = heap_extend(n_bytes);
+    }
+    if (block_split(block, size)) {
+        // block was indeed split, so splt it in the free list as well
+        fl_split(block, size);
+    }
     block_alloc(block);
+    fl_alloc(block);
     return block;
 }
 
@@ -53,6 +60,8 @@ void free(void *ptr) {
         return; // TODO: provoke segfault
     }
     block_free(block);
+    fl_free(block);
+    fl_join(block);
     block_join(block);
 }
 
@@ -78,6 +87,7 @@ void *realloc(void *ptr, size_t n_bytes) {
     }
     if (n_bytes == 0) {
         free(ptr);
+        return NULL;
     }
     intptr_t *block = ptr;
     if (block < heap_start) {
@@ -91,26 +101,46 @@ void *realloc(void *ptr, size_t n_bytes) {
     if (new_size < size) {
         intptr_t *next = block_split(block, new_size);
         if (next) {
+            fl_free(next); // add the next from the free list
+            fl_join_next(next);
             block_join_next(next); // coalesce the leftovers
         }
         block_alloc(block);
+        // no need to remove it from the free list, it wasn't in it
         return block;
     }
     intptr_t *next = block + size;
+    if (next == heap_end ||
+            (!block_is_alloc(next) && next + block_size(next) == heap_end)) {
+        // grow the heap and extend block
+        next = heap_extend(n_bytes);
+        fl_free(block);
+        fl_join_next(block);
+        block_join_next(block);
+        if (block_split(block, new_size)) {
+            fl_split(block, new_size);
+        }
+        block_alloc(block);
+        fl_alloc(block);
+        return block;
+    }
     // try to use next free block
     if (next < heap_end) {
         intptr_t next_size = block_size(next);
         if (!block_is_alloc(next) && new_size <= size + next_size) {
+            // try to split the next block at the right size
+            if (block_split(next, new_size - size)) {
+                // split successful, must split in the free list too
+                fl_split(block, new_size);
+            }
+            fl_alloc(next); // remove the next block from the free list
+            fl_join_next(block);
             block_join_next(block); // coalesce
-            block_split(block, new_size); // split if possible
-            // no need to coalesce 
             block_alloc(block); // mark block as allocated
             return block;
         }
     }
     // resizing failed, so allocate a whole new block and copy
-    // could handle the case when the block is the last in the heap 
-    // a bit more gracefully and just grow the heap instead of copying
     intptr_t *new_block = malloc(n_bytes);
     for (int i = 0; i < size; i++) {
         new_block[i] = block[i];

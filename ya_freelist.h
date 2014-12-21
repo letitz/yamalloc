@@ -3,6 +3,15 @@
  * ya_freelist.h
  */
 
+/* Block layout:
+ *
+ * -2     -1     0                               size-4 size-3
+ * +------+------+-------- - - - - - - - --------+------+------+
+ * | prev | size | data...                       | size | next |
+ * +------+------+-------- - - - - - - - --------+------+------+
+ *
+ */
+
 #ifndef YA_FREELIST_H
 #define YA_FREELIST_H
 
@@ -13,6 +22,7 @@
 #include <stdint.h> // for intptr_t
 
 #include "ya_block.h"
+#include "ya_debug.h"
 
 /*---------*/
 /* Inlines */
@@ -45,7 +55,7 @@ void fl_debug_print();
 /* Splices the allocated block out of the free list. */
 void fl_alloc(intptr_t *block);
 
-/* Adds the freed block to the start of the free list. */
+/* Adds the freed block to the appropriate place in free list. */
 void fl_free(intptr_t *block);
 
 /* Returns the first block in the free list at min_size words long.
@@ -55,6 +65,10 @@ intptr_t *fl_find(intptr_t min_size);
 /* Force split of block [block_size] into [size, block_size - size]. */
 void fl_split(intptr_t *block, intptr_t size);
 
-/* Joins are unnecessary because the pointers will still be ok after a join. */
+void fl_join_prev(intptr_t *block);
+
+void fl_join_next(intptr_t *block);
+
+void fl_join(intptr_t *block);
 
 #endif

@@ -66,8 +66,8 @@ void block_print_range(intptr_t *start, intptr_t *end) {
     intptr_t size;
     for (block = start; block < end; block += size) {
         size = block_size(block);
-        printf("Block at %p  size = %ld  alloc = %d\n",
-                block, size, block_is_alloc(block));
+        ya_debug("%d %p:%ld\n",
+                 block_is_alloc(block), block, size);
     }
 }
 #endif
@@ -164,8 +164,8 @@ intptr_t *block_split(intptr_t *block, intptr_t size) {
     return block + size;
 }
 
-/* Try to find a free block at least size words big by walking the boundary
- * tags. If no block is found the heap is grown adequately.
+/* Try to find a free block at least size min_size words large by walking the
+ * boundary tags. Does not grow the heap.
  * Returns a pointer to the block or NULL in case of failure. */
 intptr_t *block_find(intptr_t min_size) {
     intptr_t *block;
@@ -176,8 +176,8 @@ intptr_t *block_find(intptr_t min_size) {
             return block;
         }
     }
-    // could not find block, extend heap
-    return heap_extend(min_size);
+    // could not find block
+    return NULL;
 }
 
 /* Initializes the heap by calling sbrk to allocate some starter memory.
@@ -195,26 +195,29 @@ intptr_t *heap_init() {
     heap_start    += 2; // space for the first block's tags + dword alignment
     heap_end       = heap_start + size;
     block_init(heap_start, size);
-    fl_set_prev(heap_start, NULL);
-    fl_set_next(heap_start, NULL);
+    fl_free(heap_start);
     ya_debug("heap_init: start = %p, end = %p, size = %ld\n",
             heap_start, heap_end, size);
     return heap_start;
 }
 
-/* Extends the heap by at least size_w words by calling sbrk.
+/* Extends the heap by at least n_bytes bytes by calling sbrk.
  * Returns a pointer to the last (free) block or NULL in case of failure. */
-intptr_t *heap_extend(intptr_t size) {
-    size = block_fit(round_to(WORD_SIZE * size, CHUNK_SIZE));
+intptr_t *heap_extend(size_t n_bytes) {
+    // request an integer number of blocks
+    intptr_t size = block_fit(round_to(n_bytes, CHUNK_SIZE));
     void *ptr = sbrk(WORD_SIZE * size);
-    if (ptr == (void *) - 1) {
+    if (ptr == (void *) -1) {
         return NULL;
     }
     intptr_t *block = ptr; // == old heap_end
     heap_end        = block + size;
     block_init(block, size);
+    fl_free(block);
+    fl_join(block);
+    block = block_join(block);
     ya_debug("heap_extend: old end = %p, new end = %p, size = %ld\n",
             block, heap_end, size);
     ya_print_blocks();
-    return block_join(ptr);
+    return block;
 }

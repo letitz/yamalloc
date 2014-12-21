@@ -63,9 +63,9 @@ static inline intptr_t block_size(intptr_t *block) {
  * Returns the pointer to the start of the heap or NULL in case of failure. */
 intptr_t *heap_init();
 
-/* Extends the heap by at least size_w words by calling sbrk.
+/* Extends the heap by at least n_bytes bytes by calling sbrk.
  * Returns a pointer to the last (free) block or NULL in case of failure. */
-intptr_t *heap_extend(intptr_t size_w);
+intptr_t *heap_extend(size_t n_bytes);
 
 #ifdef YA_DEBUG
 /* Prints each block in the range from the block at start to the one at end */
@@ -104,8 +104,8 @@ intptr_t *block_join(intptr_t *block);
  * Returns a pointer to the second block or NULL if no split occurred. */
 intptr_t *block_split(intptr_t *block, intptr_t size);
 
-/* Try to find a free block at least min_size words big by walking the
- * boundary tags. If no block is found the heap is grown adequately.
+/* Try to find a free block at least min_size words large by walking the
+ * boundary tags. Does not grow the heap.
  * Returns a pointer to the block or NULL in case of failure. */
 intptr_t *block_find(intptr_t min_size);
 
