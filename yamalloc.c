@@ -16,6 +16,18 @@
 /* Function definitions */
 /*----------------------*/
 
+/* Splits block both at the block level and in the free list. */
+void split(intptr_t *block, intptr_t size) {
+    fl_mend_split(block, block_split(block, size));
+}
+
+/* Coalesces block with neighbors if possible, both at the block level and in
+ * the free list. */
+void join(intptr_t *block) {
+    fl_join(block);
+    block_join(block);
+}
+
 /* Allocates enough memory to store at least size bytes.
  * Returns a dword-aligned pointer to the memory or NULL in case of failure. */
 void *malloc(size_t n_bytes) {
@@ -32,10 +44,7 @@ void *malloc(size_t n_bytes) {
     if (!block) {
         block = heap_extend(n_bytes);
     }
-    if (block_split(block, size)) {
-        // block was indeed split, so splt it in the free list as well
-        fl_split(block, size);
-    }
+    split(block, size);
     block_alloc(block);
     fl_alloc(block);
     return block;
@@ -51,8 +60,7 @@ void free(void *ptr) {
     }
     block_free(block);
     fl_free(block);
-    fl_join(block);
-    block_join(block);
+    join(block);
 }
 
 /* Allocates enough memory to store an array of nmemb elements,
@@ -100,31 +108,19 @@ void *realloc(void *ptr, size_t n_bytes) {
         return block;
     }
     intptr_t *next = block + size;
-    if (next == heap_end ||
-            (!block_is_alloc(next) && next + block_size(next) == heap_end)) {
+    if (next == heap_end || next == fl_get_end()) {
         // grow the heap and extend block
         next = heap_extend(n_bytes);
-        fl_free(block);
-        fl_join_next(block);
-        block_join_next(block);
-        if (block_split(block, new_size)) {
-            fl_split(block, new_size);
-        }
-        block_alloc(block);
-        fl_alloc(block);
-        return block;
+        // then fall into next if clause which will use the newly extended
+        // heap to extend the block without moving it
     }
     // try to use next free block
     if (next < heap_end) {
         intptr_t next_size = block_size(next);
         if (!block_is_alloc(next) && new_size <= size + next_size) {
             // try to split the next block at the right size
-            if (block_split(next, new_size - size)) {
-                // split successful, must split in the free list too
-                fl_split(block, new_size);
-            }
+            split(next, new_size - size);
             fl_alloc(next); // remove the next block from the free list
-            fl_join_next(block);
             block_join_next(block); // coalesce
             block_alloc(block); // mark block as allocated
             return block;

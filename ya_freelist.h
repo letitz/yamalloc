@@ -69,8 +69,9 @@ void fl_free(intptr_t *block);
  * Returns NULL if no adequate block is found. Does not grow the heap. */
 intptr_t *fl_find(intptr_t min_size);
 
-/* Force split of block [block_size] into [size, block_size - size]. */
-void fl_split(intptr_t *block, intptr_t size);
+/* Mends the free list after a free block has just been split into two blocks,
+ * block and new_next. */
+void fl_mend_split(intptr_t *block, intptr_t *new_next);
 
 void fl_join_prev(intptr_t *block);
 

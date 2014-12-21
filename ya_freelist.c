@@ -92,13 +92,20 @@ intptr_t *fl_find(intptr_t min_size) {
     return NULL;
 }
 
-/* Force split of free block [block_size] into [size, block_size - size]. */
-void fl_split(intptr_t *block, intptr_t size) {
-    fl_set_next(block, block+size);
-    if (block == fl_end) {
-        fl_end = block+size;
+/* Mends the free list after a free block has just been split into two blocks,
+ * block and new_next. */
+void fl_mend_split(intptr_t *block, intptr_t *new_next) {
+    if (!new_next) {
+        return; // block was not split
     }
-    fl_set_prev(block+size, block);
+    intptr_t *old_next = fl_next(new_next);
+    fl_set_next(block, new_next);
+    fl_set_prev(new_next, block);
+    if (old_next) {
+        fl_set_prev(old_next, new_next);
+    } else {
+        fl_end = new_next;
+    }
 }
 
 void fl_join_next(intptr_t *block) {
